@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>AI Driving — Balap & Lalu Lintas</title>
+<link rel="stylesheet" href="style.css?v=44">
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="hud" style="display:none">
+    <div><b id="hSpeed">0 km/h</b><small id="hTrack">-</small>
+      <div id="bars"><div class="bar"><i id="barHp"></i></div><div class="bar"><i id="barTire"></i></div></div>
+    </div>
+    <div id="hInfo">-</div>
+    <div><small id="hMode">-</small><small id="wxBadge">☀️</small><button class="small" onclick="backToMenu()">Menu</button><button class="small" id="muteBtn" onclick="toggleMute()">🔊</button></div>
+  </div>
+  <div id="msg"></div>
+
+  <div id="menu">
+    <h1>🏎️ AI DRIVING</h1>
+    <p>Balap • Lalu Lintas • AI vs AI — 4 track</p>
+    <label>Track
+      <select id="trackSel"></select>
+    </label>
+    <label>Kesulitan AI
+      <select id="diffSel">
+        <option value="0.7">Mudah</option>
+        <option value="0.85" selected>Sedang</option>
+        <option value="1.0">Sulit</option>
+      </select>
+    </label>
+    <label>Jumlah mobil AI vs AI
+      <select id="aiCountSel">
+        <option value="4">4</option>
+        <option value="6" selected>6</option>
+        <option value="8">8</option>
+        <option value="10">10</option>
+      </select>
+    </label>
+    <div class="row">
+      <button onclick="startQuali('race')">🏁 Balap (quali + race)</button>
+      <button onclick="startChamp()">🏆 Championship 5×3 lap</button>
+      <button onclick="startGame('traffic')">🚗 Lalu Lintas</button>
+      <button onclick="startGame('aivai')">🤖 AI vs AI (tonton)</button>
+      <button onclick="startAIChamp()">🤖🏆 AI Championship</button>
+      <button onclick="startPitTest()">🔧 Tes Pit</button>
+    </div>
+    <small>Championship: 5 ronde sulit × 3 lap, poin F1 +1 FL, 🔧 wajib pit 1x/ronde (DSQ ke belakang kalau tidak pit)</small>
+    <small id="seasonBadge">Musim: -</small>
+    <div class="row"><button class="small" onclick="resetSeason()">Reset musim</button><button class="small" id="muteBtn2" onclick="toggleMute()">🔊 Audio</button></div>
+    <small id="verBadge" style="opacity:.5">v44 — hard-refresh (Ctrl+Shift+R) kalau beda</small>
+    <small>Kontrol: WASD / Panah / Spasi rem • C ganti kamera (AI vs AI) • Enter akhiri • Sentuh tombol di HP</small>
+    <small>🧠Taktisi seimbang • 🤬Mad Dog brutal & sering salah • 📐Profesor halus • 🛡️Tukang Blok susah disalip • 🍼Rookie labil • 🌪️Pemburu Draft jago slipstream</small>
+    <small id="evoBadge">Otak: default</small>
+    <div class="row">
+      <button id="evoBtn" class="small" onclick="runEvoBrowser()">🧬 Evolusi cepat (±1 mnt)</button>
+    </div>
+    <small id="evoProg"></small>
+  </div>
+
+  <div id="over" style="display:none"></div>
+
+  <div id="touch">
+    <button data-t="left">◀</button>
+    <button data-t="up">▲</button>
+    <button data-t="down">▼</button>
+    <button data-t="right">▶</button>
+  </div>
+  <canvas id="mini" width="200" height="130"></canvas>
+</div>
+<script src="tracks.js?v=44"></script>
+<script src="ai.js?v=44"></script>
+<script src="evolve.js?v=44"></script>
+<script src="brains-tuned.js?v=44"></script>
+<script src="audio.js?v=44"></script>
+<script src="game.js?v=44"></script>
+</body>
+</html>
