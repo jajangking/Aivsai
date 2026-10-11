@@ -653,6 +653,13 @@ function startChampRound(){
   state.traffic = { score: 0, near: 0, crash: 0, best: +(localStorage.getItem('trafficBest') || 0) };
   state.cars = withPlayer ? placeGrid(TRACKS[state.trackIdx], 5, true, 'race')
                           : placeGrid(TRACKS[state.trackIdx], state.aiCount || 6, false, 'aivai');
+  // AI-only: kocok grid tiap ronde (box pit tetap ikut mobil, posisi start diundi)
+  if (ch.aiOnly) {
+    const idx = state.cars.map((_, i) => i);
+    for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
+    const spots = state.cars.map(c => ({ x: c.x, y: c.y, angle: c.angle, lastS: c.lastS }));
+    state.cars.forEach((c, i) => { const s = spots[idx[i]]; c.x = s.x; c.y = s.y; c.angle = s.angle; c.lastS = s.lastS; c.s = s.lastS; });
+  }
   const f = state.cars[0]; state.cam.x = f.x; state.cam.y = f.y;
   state.specIdx = 0;
   state.particles = []; state.shake = 0; state.flash = 0; state.overtakes = 0; state.lastOrder = []; state.skids = [];
