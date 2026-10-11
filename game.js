@@ -769,6 +769,7 @@ window.startAIChamp = startAIChamp;
 
 function endGame(){
   state.finished=true;
+  try{ const st0=standings(); AudioSys.fanfare(!!(st0[0]&&st0[0].isPlayer)); }catch(e){}
   const ov=document.getElementById('over');
   ov.style.display='flex';
   let html='';
@@ -806,7 +807,7 @@ function loop(t){
   requestAnimationFrame(loop);
   const rawDt=Math.min(0.05,(t-last)/1000); last=t;
   let dt=Math.min(0.033,rawDt);
-  if(state.screen!=='play'||state.finished){ render(dt); return; }
+  if(state.screen!=='play'||state.finished){ render(dt); try{AudioSys.menuMusic();}catch(e){} return; }
   const track=TRACKS[state.trackIdx];
   state.time+=dt;
   if(state.mode!=='traffic') updateWeather(dt);
@@ -820,7 +821,7 @@ function loop(t){
     const c=Math.ceil(state.countdown);
     if(state.cdLast!==c){ state.cdLast=c; try{AudioSys.beep(440,0.15);}catch(e){} if(c===1){ try{AudioSys.start();}catch(e){} } }
     state.countdown-=rawDt;
-    if(state.countdown<=0){ try{AudioSys.beep(880,0.5);}catch(e){} flashMsg('GO! 🟢'); }
+    if(state.countdown<=0){ try{AudioSys.beep(880,0.5);}catch(e){} try{AudioSys.goCheer();}catch(e){} flashMsg('GO! 🟢'); }
   }
 
   for(const car of state.cars){
@@ -899,7 +900,7 @@ function loop(t){
   updateHud();
   try{
     const fcous = state.cars.find(c=>c.isPlayer) || standings()[0] || state.cars[0] || {speed:0};
-    AudioSys.update(fcous);
+    AudioSys.update(fcous, state.cars, track.length);
     AudioSys.setRain(state.wx.cond==='hujan'?0.14:(state.wx.cond==='gerimis'?0.05:0));
   }catch(e){}
   render(dt);

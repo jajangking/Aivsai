@@ -20,6 +20,7 @@ const AudioSys = {
     glass: 'audio/crash_glass.mp3',
     pit: 'audio/pit_wrench.mp3',
     ignition: 'audio/ignition.mp3',
+    crowd: 'audio/crowd_cheer.mp3',
   },
   init() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
@@ -95,11 +96,13 @@ const AudioSys = {
       this.buf.gears = this.FILES.gears.map(u => pool[u] || pool[have[0]]);
       this.startGearLoops();
     } catch (e) { /* tetap fallback osc */ }
-    for (const k of ['skid','crash','glass','pit','ignition','idle']) {
+    for (const k of ['skid','crash','glass','pit','ignition','idle','crowd']) {
       try { this.buf[k] = await get(this.FILES[k]); }
       catch (e) { /* one-shot opsional: fallback di tiap fungsi */ }
     }
     if (this.buf.skid) this.startSkidLoop();
+    this.startOppVoices();
+    this.startCrowdLoop();
     this.startIdleLoop();
   },
   startGearLoops() {
@@ -139,6 +142,31 @@ const AudioSys = {
     isrc.connect(ign); ign.connect(this.master); isrc.start();
     this.idleSrc = isrc; this.idleGain = ign;
   },
+  // MESIN LAWAN (2 suara positional): duel tempel kedengeran kiri-kanan
+  startOppVoices() {
+    if (this.opp || !this.buf.gears.length || !this.ctx) return;
+    const c = this.ctx, b = this.buf.gears[0];
+    this.opp = [0, 1].map(() => {
+      const src = c.createBufferSource(); src.buffer = b; src.loop = true; src.playbackRate.value = 1;
+      const gn = c.createGain(); gn.gain.value = 0;
+      let pan = null;
+      try {
+        pan = c.createStereoPanner();
+        src.connect(gn); gn.connect(pan); pan.connect(this.master);
+      } catch (e) { src.connect(gn); gn.connect(this.master); }
+      src.start();
+      return { src, gn, pan };
+    });
+  },
+  // PENONTON di garis start: bed + membara saat GO/finis
+  startCrowdLoop() {
+    if (this.crowdSrc || !this.buf.crowd || !this.ctx) return;
+    const c = this.ctx;
+    const src = c.createBufferSource(); src.buffer = this.buf.crowd; src.loop = true;
+    const gn = c.createGain(); gn.gain.value = 0;
+    src.connect(gn); gn.connect(this.master); src.start();
+    this.crowdSrc = src; this.crowdGain = gn;
+  },
   startSkidLoop() {
     if (this.skidSrc || !this.buf.skid) return;
     const c = this.ctx;
@@ -153,9 +181,10 @@ const AudioSys = {
     try { localStorage.setItem('audioMute', m ? '1' : '0'); } catch (e) {}
     if (this.master) this.master.gain.value = m ? 0 : 1.0;
   },
-  // dipanggil tiap frame: car = mobil fokus, throttle 0..1
-  update(car) {
+  // dipanggil tiap frame: car = mobil fokus (+ daftar mobil & panjang trek utk suara lawan/penonton)
+  update(car, others, trackLen) {
     if (!this.ctx) return;
+    this._menuOn = false; // masuk balap: musik menu mati
     const t = this.ctx.currentTime;
     const spd = Math.abs(car.speed || 0), top = car.topSpeed || 432;
     const frac = Math.max(0, Math.min(0.999, spd / top));
@@ -210,16 +239,43 @@ const AudioSys = {
         ps.start(t); ps.stop(t + 0.15);
       } catch (e) {}
     }
-    // decit ban: drift / lockup / slide keras
+    // decit ban: drift / lockup / slide keras (balans: jelas tapi tak nutup mesin)
     const slip = car.drifting ? 1 : (car.lockup ? 0.9 : (Math.abs(car.slipAngle || 0) > 0.12 && spd > 220 ? 0.6 : 0));
     if (this.skidSampGain) {
-      this.skidSrc.playbackRate.setTargetAtTime(0.9 + slip * 0.25, t, 0.05);
-      this.skidSampGain.gain.setTargetAtTime(slip * Math.min(0.4, 0.08 + spd / 2200), t, 0.05);
+      this.skidSrc.playbackRate.setTargetAtTime(0.85 + slip * 0.3, t, 0.05);
+      this.skidSampGain.gain.setTargetAtTime(slip * Math.min(0.5, 0.1 + spd / 2000), t, 0.05);
       if (this.skidGain) this.skidGain.gain.setTargetAtTime(0, t, 0.05);
     } else if (this.skidGain) {
-      this.skidGain.gain.setTargetAtTime(slip * Math.min(0.22, 0.05 + spd / 2500), t, 0.05);
+      this.skidGain.gain.setTargetAtTime(slip * Math.min(0.28, 0.06 + spd / 2200), t, 0.05);
     }
     if (this.windGain) this.windGain.gain.setTargetAtTime(Math.min(0.12, spd / 4200), t, 0.1);
+    // lawan terdekat (2): nada ikut kecepatannya, posisi stereo ikut arahnya
+    if (this.opp && others && others.length) {
+      const near = others.filter(o => o !== car)
+        .map(o => ({ o, d: Math.hypot((o.x || 0) - (car.x || 0), (o.y || 0) - (car.y || 0)) }))
+        .filter(e => e.d < 900).sort((a, b) => a.d - b.d).slice(0, 2);
+      this.opp.forEach((v, i) => {
+        const e = near[i];
+        if (!e) { v.gn.gain.setTargetAtTime(0, t, 0.1); return; }
+        const ang = Math.atan2(e.o.y - car.y, e.o.x - car.x) - (car.angle || 0);
+        if (v.pan) v.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, Math.sin(ang))), t, 0.1);
+        const ospd = Math.abs(e.o.speed || 0), otop = e.o.topSpeed || 432;
+        const ofrac = Math.max(0, Math.min(0.999, ospd / otop));
+        const orate = [0.62, 0.85, 1.08, 1.31, 1.54][Math.min(4, Math.floor(ofrac * 5))] + (ofrac * 5 % 1) * 0.33;
+        v.src.playbackRate.setTargetAtTime(Math.min(1.6, orate), t, 0.1);
+        v.gn.gain.setTargetAtTime(0.45 * (1 - e.d / 900) * (0.3 + 0.7 * Math.min(1, ospd / 300)), t, 0.1);
+      });
+    }
+    // penonton: ramai di dekat garis start + membara saat GO/finis
+    if (this.crowdGain) {
+      let prox = 0;
+      if (trackLen && car.s !== undefined) {
+        const ds = Math.min(car.s, trackLen - car.s);
+        prox = Math.max(0, 1 - ds / 1200);
+      }
+      const swell = Math.exp(-(t - (this._cheerT === undefined ? -9 : this._cheerT)) * 0.8);
+      this.crowdGain.gain.setTargetAtTime(0.03 + prox * 0.10 + swell * 0.5, t, 0.2);
+    }
   },
   setRain(x) {
     if (!this.ctx || !this.rainGain) return;
@@ -244,6 +300,42 @@ const AudioSys = {
       const g = this.ctx.createGain(); g.gain.value = 0.55;
       s.connect(g); g.connect(this.master); s.start();
     } catch (e) {}
+  },
+  // nada synth kecil (musik menu & fanfare)
+  _note(f, t0, dur, vol, type) {
+    try {
+      const o = this.ctx.createOscillator(); o.type = type || 'triangle'; o.frequency.value = f;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(this.master);
+      o.start(t0); o.stop(t0 + dur + 0.05);
+    } catch (e) {}
+  },
+  // musik menu: arp Am-F-C-G santai, dijadwalkan tiap frame
+  menuMusic() {
+    if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime;
+    if (!this._menuOn) { this._menuOn = true; this._mNext = t + 0.1; this._mStep = 0; }
+    const prog = [[220, 261.63, 329.63], [174.61, 220, 261.63], [130.81, 164.81, 196], [196, 246.94, 293.66]];
+    let guard = 0;
+    while (this._mNext < t + 0.35 && guard++ < 8) {
+      const bar = Math.floor(this._mStep / 8) % 4, st = this._mStep % 8;
+      const ch = prog[bar];
+      if (st % 2 === 0) this._note(ch[0] / 2, this._mNext, 0.24, 0.10, 'sine');
+      else this._note(ch[(st >> 1) % 3] * 2, this._mNext, 0.2, 0.045, 'triangle');
+      this._mNext += 0.215; this._mStep++;
+    }
+  },
+  goCheer() { if (this.ctx) this._cheerT = this.ctx.currentTime; },
+  // fanfare finis: menang = mayor naik, kalah = turun
+  fanfare(win) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const seq = win ? [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5] : [392, 329.63, 261.63];
+    seq.forEach((f, i) => this._note(f, t + i * 0.14, 0.3, 0.12, 'triangle'));
+    this._cheerT = t;
   },
   // kunci roda pit: rekaman pneumatic wrench (±2.8s ≈ durasi servis), fallback synth
   pitGun() {
@@ -270,29 +362,31 @@ const AudioSys = {
       }
     } catch (e) {}
   },
-  // crash diarahkan lewat master (mute ikut berlaku)
+  // crash 3 tingkat: senggolan ringan / sedang / keras (+kaca & jeduk)
   crash(rel) {
     if (!this.ctx) return false;
     if (!this.buf || !this.buf.crash) return false;
     try {
+      const light = rel < 140, hard = rel > 300;
       const s = this.ctx.createBufferSource(); s.buffer = this.buf.crash;
-      s.playbackRate.value = 0.9 + Math.random() * 0.25;
-      const g = this.ctx.createGain(); g.gain.value = Math.min(0.65, 0.18 + rel / 700);
+      s.playbackRate.value = light ? 1.15 : (hard ? 0.85 : 0.9 + Math.random() * 0.25);
+      const g = this.ctx.createGain();
+      g.gain.value = light ? Math.min(0.3, 0.1 + rel / 900) : Math.min(0.65, 0.18 + rel / 700);
       s.connect(g); g.connect(this.master); s.start();
-      if (rel > 220 && this.buf.glass) { // hantaman keras: + suara kaca
+      if (!light && rel > 220 && this.buf.glass) { // sedang/keras: + suara kaca
         const gs = this.ctx.createBufferSource(); gs.buffer = this.buf.glass;
         gs.playbackRate.value = 1.0 + Math.random() * 0.2;
-        const gg = this.ctx.createGain(); gg.gain.value = Math.min(0.4, 0.1 + rel / 1200);
+        const gg = this.ctx.createGain(); gg.gain.value = hard ? Math.min(0.5, 0.15 + rel / 1000) : Math.min(0.4, 0.1 + rel / 1200);
         gs.connect(gg); gg.connect(this.master); gs.start(this.ctx.currentTime + 0.03);
       }
-      // bobot bawah (bodi): semburan noise lowpass singkat
-      const dur = 0.15;
+      // bobot bawah (bodi): semburan noise lowpass singkat (keras = lebih besar)
+      const dur = hard ? 0.25 : 0.15;
       const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * dur, this.ctx.sampleRate);
       const dd = buf.getChannelData(0);
       for (let i = 0; i < dd.length; i++) dd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / dd.length, 2);
       const ns = this.ctx.createBufferSource(); ns.buffer = buf;
-      const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 300;
-      const ng = this.ctx.createGain(); ng.gain.value = Math.min(0.4, 0.1 + rel / 1000);
+      const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = hard ? 220 : 300;
+      const ng = this.ctx.createGain(); ng.gain.value = hard ? Math.min(0.55, 0.15 + rel / 800) : Math.min(0.4, 0.1 + rel / 1000);
       ns.connect(f); f.connect(ng); ng.connect(this.master); ns.start();
       return true;
     } catch (e) { return false; }
