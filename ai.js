@@ -283,13 +283,21 @@ function updateAI(car, track, others, difficulty, dt, mode, leaderGap=0) {
   } else ai._missed = false;
   // yang kelewat box = mode balap normal (lane + speed), bukan nempel sisi pit
   const pitEngaged = approachingPit && !ai._missed;
-  // PIT EXIT: habis servis, LANGSUNG ke lane pit lalu susur sampai merge.
+  // PIT EXIT: habis servis, LANGSUNG ambil lane pit (bukan baris box) agar tidak seruduk box depan yang ada mobilnya.
   if (ai.exiting) {
     pitLaneOff = -(track.roadHalf+PIT_LANE_EXTRA);
-    if (info.s < 500) desired = Math.min(desired, PIT_SPEED);
+    const stillInBox = latPit < -(track.roadHalf+95);
+    ai._exitBox = stillInBox;
+    if (stillInBox) {
+      // Selama masih di baris box: merangkak + setir tajam keluar ke lane. Jangan langsung tancap.
+      desired = Math.min(desired, 60);
+      // Ada mobil di box depan (box selisih 100px + kurva ≈ 113px): tahan dulu, jangan maju nabrak.
+      if (closestAhead < 140 && Math.abs(aheadLat) < 60) desired = Math.min(desired, 15);
+    }
+    else if (info.s > track.length-PIT_LANE_LEN || info.s < 500) desired = Math.min(desired, PIT_SPEED);
     else if (info.s < PIT_EXIT) desired = Math.min(desired, 250);
-    else if (info.s > PIT_EXIT && info.s < track.length-PIT_LANE_LEN) ai.exiting = false; // merge selesai
-  }
+    else if (info.s > PIT_EXIT && info.s < track.length-PIT_LANE_LEN) { ai.exiting = false; ai._exitBox = false; } // merge selesai
+  } else ai._exitBox = false;
 
   let throttle = 0, brake = 0;
   const err = desired - car.speed;
@@ -314,7 +322,10 @@ function updateAI(car, track, others, difficulty, dt, mode, leaderGap=0) {
   // lookahead 200 + setir 1.25x + jaga jarak 1.2x (belok kiri-kanan jelas, anti serempet).
   // Firm hanya <1200px dari box (biar tidak zigzag di ancang jauh).
   const pitFirm = ((approachingPit && (ai._dsBox ?? 9999) < 1200) || ai.exiting);
-  if (pitEngaged && (ai._dsBox ?? 9999) < 400) {
+  if (ai.exiting && ai._exitBox) {
+    tp = trackPointAt(track, info.s + 90);
+    nx = -tp.dirY; ny = tp.dirX;
+  } else if (pitEngaged && (ai._dsBox ?? 9999) < 400) {
     tp = trackPointAt(track, info.s + 120);
     nx = -tp.dirY; ny = tp.dirX;
   } else if (pitFirm) {
@@ -338,7 +349,7 @@ function updateAI(car, track, others, difficulty, dt, mode, leaderGap=0) {
   const tx = tp.x + nx*wantLane, ty = tp.y + ny*wantLane;
   const want = Math.atan2(ty-car.y, tx-car.x);
   const diff = angDiff(car.angle, want);
-  let steer = clamp(diff*(B.steerGain||3.0)*(pitFirm?1.25:1), -1, 1);
+  let steer = clamp(diff*(B.steerGain||3.0)*((ai.exiting&&ai._exitBox)?1.6:(pitFirm?1.25:1)), -1, 1);
   steer *= (spd > 350 ? 0.85 : 1.0);
 
   // --- 5. anti-stuck ketat ---

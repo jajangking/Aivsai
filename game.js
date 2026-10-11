@@ -48,8 +48,8 @@ function gridSlot(track, i){
   const s=track.length - 250 - row*130;
   const p=trackPointAt(track,s);
   const nx=-p.dirY, ny=p.dirX;
-  const p0=trackPointAt(track,0);
-  return { x:p.x+nx*side*50, y:p.y+ny*side*50, angle:Math.atan2(p0.dirY,p0.dirX), s };
+  // arah mobil = arah trek DI POSISINYA (bukan di garis start) — kalau grid di tikungan tidak miring/salah arah
+  return { x:p.x+nx*side*50, y:p.y+ny*side*50, angle:Math.atan2(p.dirY,p.dirX), s };
 }
 // Susun ulang mobil yang SUDAH ADA ke grid sesuai urutan (untuk start balap dari hasil kualifikasi).
 function placeOnGrid(track, ordered){
@@ -75,20 +75,20 @@ function placeOnGrid(track, ordered){
 
 function placeGrid(track, nAI, withPlayer, mode){
   const cars=[]; const total=nAI+(withPlayer?1:0);
-  const p0=trackPointAt(track,0);
-  const startAng=Math.atan2(p0.dirY,p0.dirX);
   for(let i=0;i<total;i++){
     const row=Math.floor(i/2), side=(i%2===0?-1:1);
     const s=track.length - 250 - row*130;
     const p=trackPointAt(track,s);
     const nx=-p.dirY, ny=p.dirX;
     const x=p.x+nx*side*50, y=p.y+ny*side*50;
+    // arah mobil = arah trek DI POSISINYA (fix: dulu pakai arah garis start → miring di Kota Neon)
+    const ang=Math.atan2(p.dirY,p.dirX);
     const isP = withPlayer && i===0;
     // BoP: semua mobil balap/AIvAI speed HAMPIR sama (selisih <3%) biar tidak jomplang
     let top;
     if(mode==='traffic') top = 175+Math.random()*65;
     else top = 432 + (Math.random()-0.5)*14 + (isP?4:0);
-    const c=newCar(x,y,startAng,COLORS[i%COLORS.length],isP?'KAMU':NAMES[i%NAMES.length],isP,top);
+    const c=newCar(x,y,ang,COLORS[i%COLORS.length],isP?'KAMU':NAMES[i%NAMES.length],isP,top);
     c.lastS=s; c.totalS=0; c.lap=0;
     c.pitSlot=i; c.pitStops=0; c.pitTimer=0; c.pitDone=false;
     if(!isP){
@@ -430,8 +430,8 @@ function collisions(cars){  for(let i=0;i<cars.length;i++)for(let j=i+1;j<cars.l
       else if(anchB&&!anchA){ a.x-=nx*(34-d+1); a.y-=ny*(34-d+1); }
       else { const ov=(34-d)/2+0.5; a.x-=nx*ov;a.y-=ny*ov;b.x+=nx*ov;b.y+=ny*ov; }
       // ZONA PIT = wilayah hati-hati, TAPI hanya jika salah satunya memang urusan pit
-      // (mau masuk/servis). Duel murni di trek lurus tetap fisika penuh.
-      const pitBusy = (a.ai&&a.ai.willPit)||a.pitTimer>0||(b.ai&&b.ai.willPit)||b.pitTimer>0;
+      // (mau masuk/servis/baru keluar). Duel murni di trek lurus tetap fisika penuh.
+      const pitBusy = (a.ai&&(a.ai.willPit||a.ai.exiting))||a.pitTimer>0||(b.ai&&(b.ai.willPit||b.ai.exiting))||b.pitTimer>0;
       if(a.pitZone&&b.pitZone&&pitBusy){
         if((a.hitCd||0)<=0&&(b.hitCd||0)<=0){ a.hitCd=0.25; b.hitCd=0.25; }
         if(a.isPlayer)a.missCd=0.5; if(b.isPlayer)b.missCd=0.5;
@@ -818,7 +818,7 @@ function loop(t){
   // START LIGHTS: tahan semua mobil + bel per detik → GO!
   if(state.countdown>0){
     const c=Math.ceil(state.countdown);
-    if(state.cdLast!==c){ state.cdLast=c; try{AudioSys.beep(440,0.15);}catch(e){} }
+    if(state.cdLast!==c){ state.cdLast=c; try{AudioSys.beep(440,0.15);}catch(e){} if(c===1){ try{AudioSys.start();}catch(e){} } }
     state.countdown-=rawDt;
     if(state.countdown<=0){ try{AudioSys.beep(880,0.5);}catch(e){} flashMsg('GO! 🟢'); }
   }
