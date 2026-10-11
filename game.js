@@ -388,6 +388,7 @@ function stepCar(car,track,dt){
 // PIT STOP: berhenti di box sendiri 2.5s → ban fresh + damage dipulihkan 75%
 function pitUpdate(car, track, dt){
   if(state.mode!=='race'&&state.mode!=='champ'&&state.mode!=='pittest') return;
+  if(state.countdown>0) return; // pit tutup saat countdown (grid P1/P3.. tepat di depan box!)
   if(car.pitSlot===undefined) return;
   const info=trackClosest(track,car.x,car.y);
   const onRight=(info.nx*(-info.dirY)+info.ny*(info.dirX))<0;
@@ -396,7 +397,9 @@ function pitUpdate(car, track, dt){
   let dsBox=pitSlotS(track,car.pitSlot)-info.s;
   if(dsBox<-track.length/2)dsBox+=track.length;
   if(dsBox>track.length/2)dsBox-=track.length;
-  const atBox = car.inPit && Math.abs(dsBox)<80;
+  // Servis HANYA di baris box (dist ≈ roadHalf+130): mobil grid (dist 50) tidak boleh kehitung nge-pit!
+  const inBoxBand = info.dist>track.roadHalf+95 && info.dist<track.roadHalf+PIT_BOX_EXTRA+60;
+  const atBox = onRight && inZone && inBoxBand && Math.abs(dsBox)<80;
   if(!car.pitDone && atBox && Math.abs(car.speed)<35){
     car.pitTimer=(car.pitTimer||0)+dt;
     if(car.pitTimer>=PIT_STOP_TIME){
