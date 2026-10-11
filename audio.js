@@ -165,18 +165,14 @@ const AudioSys = {
     const load = (car.input && car.input.throttle) || 0;
     if (this.sampReady) {
       // pindah gigi = rate MELUNCUR (0.15s) + sentakan halus — tanpa crossfade, tak ada lompatan
-      if (gear !== this.lastGear) {
-        if (gear < this.lastGear) this._blipT = t; // downshift: blip gas
-        this.lastGear = gear; this._shiftT = t;
-      }
+      if (gear !== this.lastGear) { this.lastGear = gear; this._shiftT = t; }
       const dip = Math.exp(-(t - this._shiftT) * 12);      // sentakan punchy tapi singkat
-      const blip = Math.exp(-(t - this._blipT) * 5);       // kocokan gas saat downshift
       const gearBase = [0.62, 0.85, 1.08, 1.31, 1.54][gear] || 1;
-      const rate = Math.min(1.7, (gearBase + inGear * 0.33) * (1 + 0.45 * blip));
+      const rate = Math.min(1.6, gearBase + inGear * 0.33);
       if (this.gearSrc) this.gearSrc.playbackRate.setTargetAtTime(rate, t, 0.06);
       this.gearFilter.frequency.setTargetAtTime(1200 + rpm * 3000 + load * 1200, t, 0.08);
       const base = 0.8 + load * 1.1 + Math.min(0.25, spd / 2000);
-      this.gearBus.gain.setTargetAtTime(base * (1 - 0.5 * dip) * (1 + 0.35 * blip), t, 0.03);
+      this.gearBus.gain.setTargetAtTime(base * (1 - 0.5 * dip), t, 0.03);
       if (this.idleGain) this.idleGain.gain.setTargetAtTime(spd < 60 ? 0.5 * (1 - spd / 60) : 0, t, 0.1);
       if (this.eng) this.eng.g.gain.setTargetAtTime(0, t, 0.05); // fallback sunyi
       if (this.exh) { // knalpot: body gerung ngikut gigi, gain kecil
