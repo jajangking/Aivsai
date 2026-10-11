@@ -169,14 +169,14 @@ const AudioSys = {
         if (gear < this.lastGear) this._blipT = t; // downshift: blip gas
         this.lastGear = gear; this._shiftT = t;
       }
-      const dip = Math.exp(-(t - this._shiftT) * 8);       // sentakan lembut ~0.4s
+      const dip = Math.exp(-(t - this._shiftT) * 12);      // sentakan punchy tapi singkat
       const blip = Math.exp(-(t - this._blipT) * 6);       // rev-up sesaat saat downshift
-      const gearBase = [0.65, 0.85, 1.05, 1.25, 1.45][gear] || 1;
-      const rate = Math.min(1.55, (gearBase + inGear * 0.25) * (1 + 0.25 * blip));
-      if (this.gearSrc) this.gearSrc.playbackRate.setTargetAtTime(rate, t, 0.15);
+      const gearBase = [0.62, 0.85, 1.08, 1.31, 1.54][gear] || 1;
+      const rate = Math.min(1.6, (gearBase + inGear * 0.33) * (1 + 0.25 * blip));
+      if (this.gearSrc) this.gearSrc.playbackRate.setTargetAtTime(rate, t, 0.06);
       this.gearFilter.frequency.setTargetAtTime(1200 + rpm * 3000 + load * 1200, t, 0.08);
       const base = 0.8 + load * 1.1 + Math.min(0.25, spd / 2000);
-      this.gearBus.gain.setTargetAtTime(base * (1 - 0.3 * dip), t, 0.05);
+      this.gearBus.gain.setTargetAtTime(base * (1 - 0.5 * dip), t, 0.03);
       if (this.idleGain) this.idleGain.gain.setTargetAtTime(spd < 60 ? 0.5 * (1 - spd / 60) : 0, t, 0.1);
       if (this.eng) this.eng.g.gain.setTargetAtTime(0, t, 0.05); // fallback sunyi
       if (this.exh) { // knalpot: body gerung ngikut gigi, gain kecil
