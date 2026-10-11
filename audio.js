@@ -9,7 +9,7 @@ const AudioSys = {
   eng: null, skidGain: null, windGain: null,
   // --- sampel ---
   buf: null, sampReady: false, _loading: false,
-  gearBus: null, gearFilter: null, gearGains: null, gearSrces: null, lastGear: -1, _shiftT: 0,
+  gearBus: null, gearFilter: null, gearSrc: null, lastGear: -1, _shiftT: 0,
   skidSrc: null, skidSampGain: null,
   FILES: {
     // racing motorcycle engine (Mixkit) = teriakan high-RPM mirip F1, semua gigi + trim gap mp3
@@ -118,18 +118,16 @@ const AudioSys = {
       this.gearFilter.connect(hpEx); hpEx.connect(ws); ws.connect(this.gearBus);
     } catch (e) { this.gearFilter.connect(this.gearBus); }
     this.gearBus.connect(this.master);
-    this.gearGains = []; this.gearSrces = [];
-    this.buf.gears.forEach((b) => {
-      const src = c.createBufferSource(); src.buffer = b; src.loop = true;
-      // pangkas ujung (gap encoder mp3 + fade) biar putaran mulus
-      try {
-        const trim = 0.06;
-        if (b.duration > trim * 2 + 0.2) { src.loopStart = trim; src.loopEnd = b.duration - trim; }
-      } catch (e) {}
-      const gn = c.createGain(); gn.gain.value = 0;
-      src.connect(gn); gn.connect(this.gearFilter); src.start();
-      this.gearGains.push(gn); this.gearSrces.push(src);
-    });
+    // SATU source: posisi rekaman tak pernah lompat → pindah gigi = rate meluncur + sentakan, selalu nyambung
+    const b0 = this.buf.gears[0];
+    const src = c.createBufferSource(); src.buffer = b0; src.loop = true;
+    // pangkas ujung (gap encoder mp3 + fade) biar putaran mulus
+    try {
+      const trim = 0.06;
+      if (b0.duration > trim * 2 + 0.2) { src.loopStart = trim; src.loopEnd = b0.duration - trim; }
+    } catch (e) {}
+    src.connect(this.gearFilter); src.start();
+    this.gearSrc = src;
     this.sampReady = true;
   },
   // idle V8: menggerung saat diam, pudar begitu jalan
@@ -166,24 +164,19 @@ const AudioSys = {
     const rpm = 0.25 + inGear * 0.75;
     const load = (car.input && car.input.throttle) || 0;
     if (this.sampReady) {
-      // gigi aktif meraung, gigi lain sunyi → crossfade + sentakan kopling tiap pindah gigi
+      // pindah gigi = rate MELUNCUR (0.15s) + sentakan halus — tanpa crossfade, tak ada lompatan
       if (gear !== this.lastGear) {
-        this._shiftDir = gear < this.lastGear ? -1 : 1;
         if (gear < this.lastGear) this._blipT = t; // downshift: blip gas
         this.lastGear = gear; this._shiftT = t;
       }
-      const dip = Math.exp(-(t - this._shiftT) * 10);      // 1 → 0 dalam ~0.3s
-      const blip = Math.exp(-(t - this._blipT) * 7);       // rev-up sesaat saat downshift
-      // SATU timbre rally, teriakan dari rate LEBAR (0.65→1.55): tiap gigi naik, pindah gigi turun
+      const dip = Math.exp(-(t - this._shiftT) * 8);       // sentakan lembut ~0.4s
+      const blip = Math.exp(-(t - this._blipT) * 6);       // rev-up sesaat saat downshift
       const gearBase = [0.65, 0.85, 1.05, 1.25, 1.45][gear] || 1;
       const rate = Math.min(1.55, (gearBase + inGear * 0.25) * (1 + 0.25 * blip));
-      this.gearGains.forEach((gn, i) => {
-        gn.gain.setTargetAtTime(i === gear ? 1 : 0, t, i === gear ? 0.03 : 0.06);
-        this.gearSrces[i].playbackRate.setTargetAtTime(i === gear ? rate : ([0.65, 0.85, 1.05, 1.25, 1.45][i] || 1), t, 0.05);
-      });
-      this.gearFilter.frequency.setTargetAtTime(1200 + rpm * 3000 + load * 1200, t, 0.05);
+      if (this.gearSrc) this.gearSrc.playbackRate.setTargetAtTime(rate, t, 0.15);
+      this.gearFilter.frequency.setTargetAtTime(1200 + rpm * 3000 + load * 1200, t, 0.08);
       const base = 0.8 + load * 1.1 + Math.min(0.25, spd / 2000);
-      this.gearBus.gain.setTargetAtTime(base * (1 - 0.45 * dip), t, 0.03);
+      this.gearBus.gain.setTargetAtTime(base * (1 - 0.3 * dip), t, 0.05);
       if (this.idleGain) this.idleGain.gain.setTargetAtTime(spd < 60 ? 0.5 * (1 - spd / 60) : 0, t, 0.1);
       if (this.eng) this.eng.g.gain.setTargetAtTime(0, t, 0.05); // fallback sunyi
       if (this.exh) { // knalpot: body gerung ngikut gigi, gain kecil
